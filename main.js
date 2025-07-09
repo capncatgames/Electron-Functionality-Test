@@ -3,33 +3,53 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 let mainWindow;
+let screenCaptureWindow;
 let pyProc;
 
 app.whenReady().then(async () => {
     console.log("[main] 앱 시작");
-
     mainWindow = new BrowserWindow({
-        width: 1200,
-        height: 800,
+        width: 1280,
+        height: 720,
+        transparent: true,
+        frame: false,
+        alwaysOnTop: true,
+        hasShadow: false,
+        skipTaskbar: true,
+        focusable: false,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
-            nodeIntegration: false,
+            nodeIntegration: false
         }
     });
+    mainWindow.loadFile('overlay.html');
+    mainWindow.setIgnoreMouseEvents(true);
 
+    screenCaptureWindow = new BrowserWindow({
+        width: 1200,
+        height: 800,
+        transparent: false,
+        frame: true,
+        alwaysOnTop: true,
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false
+        }
+    });
 
     console.log("[main] 화면 소스 탐색 중...");
     const sources = await desktopCapturer.getSources({ types: ['screen'] });
     console.log(sources.length)
-    mainWindow.loadFile('index.html');
+    screenCaptureWindow.loadFile('index.html');
     if (sources.length > 0) {
         const sourceId = sources[0].id;
         console.log("[main] 화면 소스 선택됨:", sourceId);
 
-        mainWindow.webContents.once('did-finish-load', () => {
+        screenCaptureWindow.webContents.once('did-finish-load', () => {
             console.log("[main] renderer에 sourceId 전달");
-            mainWindow.webContents.send('set-screen-source', sourceId);
+            screenCaptureWindow.webContents.send('set-screen-source', sourceId);
         });
     } else {
         console.error("[main] 화면 소스 없음!");
@@ -42,7 +62,7 @@ app.whenReady().then(async () => {
 
         pyProc.stdout.on('data', (data) => {
             console.log("[main] Python stdout:", data.toString());
-            mainWindow.webContents.send('ocr-result', data.toString());
+            screenCaptureWindow.webContents.send('ocr-result', data.toString());
         });
 
         pyProc.stderr.on('data', (data) => {
@@ -68,4 +88,16 @@ app.whenReady().then(async () => {
             pyProc.stdin.write(base64 + "\n");
         }
     });
+
+    ipcMain.on('request-drag-mode', () => {
+        mainWindow.setIgnoreMouseEvents(false);
+        console.log("[main] request drag")
+        mainWindow.webContents.send('enable-drag');
+    });
+
+    ipcMain.on('area-selected', (event, cropArea) => {
+        mainWindow.setIgnoreMouseEvents(true);
+        screenCaptureWindow.webContents.send('area-updated', cropArea);
+    });
+
 });

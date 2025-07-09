@@ -42,6 +42,7 @@ document.getElementById('start').addEventListener('click', () => {
 document.getElementById('stop').addEventListener('click', () => {
     console.log("[renderer] 캡처 중지");
     clearInterval(intervalId);
+    intervalId = null;
 });
 
 window.electronAPI.onOCRResult((msg) => {
@@ -50,6 +51,12 @@ window.electronAPI.onOCRResult((msg) => {
     log.textContent += msg + '\n';
     const container = document.getElementById('log-container');
     container.scrollTop = container.scrollHeight;
+});
+
+document.getElementById('selectAreaBtn').addEventListener('click', () => {
+    console.log("[renderer] 영역 지정 요청");
+    appendLog("영역 지정 모드 활성화");
+    window.electronAPI.sendMessage('request-drag-mode');
 });
 
 window.electronAPI.onScreenSource(async (sourceId) => {
@@ -84,3 +91,21 @@ window.electronAPI.onScreenSource(async (sourceId) => {
     }
 });
 
+window.electronAPI.onMessage('area-updated', (area) => {
+    cropArea = area;
+    document.getElementById('result').innerText =
+        `선택 영역: x=${area.x}, y=${area.y}, w=${area.width}, h=${area.height}`;
+    appendLog(`영역 업데이트: x=${area.x}, y=${area.y}, w=${area.width}, h=${area.height}`);
+});
+
+// 로그 자동 스크롤 함수 추가
+function appendLog(msg) {
+    const log = document.getElementById('log');
+    log.textContent += msg + '\n';
+    const container = document.getElementById('log-container');
+    container.scrollTop = container.scrollHeight;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    appendLog("애플리케이션 시작됨");
+});
