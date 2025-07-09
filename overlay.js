@@ -6,8 +6,12 @@ let isSelecting = false, startX, startY, endX, endY;
 canvas.addEventListener('mousedown', (e) => {
     isSelecting = true;
     const rect = canvas.getBoundingClientRect();
-    startX = e.clientX - rect.left;
-    startY = e.clientY - rect.top;
+
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    startX = (e.clientX - rect.left) * scaleX;
+    startY = (e.clientY - rect.top) * scaleY;
     endX = startX;
     endY = startY;
 });
@@ -15,25 +19,33 @@ canvas.addEventListener('mousedown', (e) => {
 canvas.addEventListener('mousemove', (e) => {
     if (!isSelecting) return;
     const rect = canvas.getBoundingClientRect();
-    endX = e.clientX - rect.left;
-    endY = e.clientY - rect.top;
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    endX = (e.clientX - rect.left) * scaleX;
+    endY = (e.clientY - rect.top) * scaleY;
     drawSelection();
 });
 
-canvas.addEventListener('mouseup', (e) => {
-    isSelecting = false;
-    const rect = canvas.getBoundingClientRect();
-    endX = e.clientX - rect.left;
-    endY = e.clientY - rect.top;
+canvas.addEventListener('mouseup', e => {
+    isSelecting=false;
+    const { left, top, width: cw, height: ch } = canvas.getBoundingClientRect();
+    const scaleX=canvas.width/cw, scaleY=canvas.height/ch;
+    endX=(e.clientX-left)*scaleX;
+    endY=(e.clientY-top)*scaleY;
     drawSelection();
-    // 좌표 계산
-    const x = Math.min(startX, endX);
-    const y = Math.min(startY, endY);
-    const w = Math.abs(endX - startX);
-    const h = Math.abs(endY - startY);
-    // 좌표 기능 창에 전달
-    ipcRenderer.send('area-selected', { x, y, width: w, height: h });
+    // 계산된 영역을 main으로 전송
+    const area = {
+        x: Math.min(startX,endX),
+        y: Math.min(startY,endY),
+        width: Math.abs(endX-startX),
+        height: Math.abs(endY-startY)
+    };
+
+    window.electronAPI.sendMessage('request-drag-finish', area);
+
     canvas.style.pointerEvents = 'none';
+    document.getElementById('backdrop').style.background = 'rgba(0,0,0,0)';
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 });
 
@@ -51,16 +63,6 @@ function drawSelection() {
 
 window.electronAPI.onEnableDrag(() => {
     console.log("[overlay] drag mode enabled");
-    // show semi-transparent black full-screen backdrop
-    document.getElementById('backdrop').style.background = 'rgba(0,0,0,0.5)';
-    // now allow canvas to receive pointer events for drawing
-    const canvas = document.getElementById('selectCanvas');
-    canvas.style.pointerEvents = 'auto';
-});
-
-// And when drag ends (in your mouseup handler), reset backdrop:
-canvas.addEventListener('mouseup', (e) => {
-    // ... existing mouseup logic ...
-    // hide the tint again
-    document.getElementById('backdrop').style.background = 'rgba(0,0,0,0)';
+    document.getElementById('backdrop').style.background='rgba(0,0,0,0.5)';
+    canvas.style.pointerEvents='auto';
 });

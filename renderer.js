@@ -74,10 +74,10 @@ window.electronAPI.onScreenSource(async (sourceId) => {
                 mandatory: {
                     chromeMediaSource: 'desktop',
                     chromeMediaSourceId: sourceId,
-                    minWidth: 1280,
-                    maxWidth: 1280,
-                    minHeight: 720,
-                    maxHeight: 720
+                    minWidth: 1920,
+                    maxWidth: 1920,
+                    minHeight: 1080,
+                    maxHeight: 1080
                 }
             }
         });
@@ -96,6 +96,15 @@ window.electronAPI.onMessage('area-updated', (area) => {
     document.getElementById('result').innerText =
         `선택 영역: x=${area.x}, y=${area.y}, w=${area.width}, h=${area.height}`;
     appendLog(`영역 업데이트: x=${area.x}, y=${area.y}, w=${area.width}, h=${area.height}`);
+});
+
+window.electronAPI.onAreaUpdated((area) => {
+    console.log('[renderer] area-updated 수신:', area);
+    // cropArea 변수 갱신 및 UI 반영
+    cropArea = area;
+    document.getElementById('result').innerText =
+        `선택 영역: x=${area.x}, y=${area.y}, w=${area.width}, h=${area.height}`;
+    appendLog(`영역 업데이트됨: ${JSON.stringify(area)}`);
 });
 
 // 로그 자동 스크롤 함수 추가

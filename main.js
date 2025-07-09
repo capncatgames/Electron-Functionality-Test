@@ -1,22 +1,30 @@
-const { app, BrowserWindow, ipcMain, desktopCapturer } = require('electron');
+const { app, BrowserWindow, ipcMain, desktopCapturer, screen} = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
+
 
 let mainWindow;
 let screenCaptureWindow;
 let pyProc;
 
 app.whenReady().then(async () => {
+    const { screen } = require('electron');
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width, height } = primaryDisplay.workAreaSize;
+    console.log(width, height)
     console.log("[main] 앱 시작");
     mainWindow = new BrowserWindow({
-        width: 1280,
-        height: 720,
+        width: width,
+        height: height,
+        x: 0,
+        y: 0,
         transparent: true,
         frame: false,
         alwaysOnTop: true,
         hasShadow: false,
         skipTaskbar: true,
         focusable: false,
+        resizable: false,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
@@ -33,6 +41,7 @@ app.whenReady().then(async () => {
         frame: true,
         alwaysOnTop: true,
         webPreferences: {
+            additionalArguments: [`--width=${width}`, `--height=${height}`],
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false
@@ -90,14 +99,18 @@ app.whenReady().then(async () => {
     });
 
     ipcMain.on('request-drag-mode', () => {
-        mainWindow.setIgnoreMouseEvents(false);
         console.log("[main] request drag")
+        mainWindow.setAlwaysOnTop(true, 'screen-saver');
         mainWindow.webContents.send('enable-drag');
+        mainWindow.setIgnoreMouseEvents(false);
+
     });
 
-    ipcMain.on('area-selected', (event, cropArea) => {
+    ipcMain.on('request-drag-finish', (event, cropArea) => {
+        console.log('[main] request-drag-finish 수신:', cropArea);
+        // 오버레이 클릭 무시 복구
         mainWindow.setIgnoreMouseEvents(true);
+        // 기능 창(renderer)에 영역 업데이트 전달
         screenCaptureWindow.webContents.send('area-updated', cropArea);
     });
-
 });
