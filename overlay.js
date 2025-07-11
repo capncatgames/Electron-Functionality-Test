@@ -1,4 +1,3 @@
-const { ipcRenderer } = window.electronAPI;
 const canvas = document.getElementById('selectCanvas');
 const ctx = canvas.getContext('2d');
 let isSelecting = false, startX, startY, endX, endY;
@@ -34,7 +33,7 @@ canvas.addEventListener('mouseup', e => {
     endX=(e.clientX-left)*scaleX;
     endY=(e.clientY-top)*scaleY;
     drawSelection();
-    // 계산된 영역을 main으로 전송
+    // 계산된 영역 저장
     const area = {
         x: Math.min(startX,endX),
         y: Math.min(startY,endY),
@@ -42,6 +41,7 @@ canvas.addEventListener('mouseup', e => {
         height: Math.abs(endY-startY)
     };
 
+    // 계산된 영역을 main으로 전송
     window.electronAPI.sendMessage('request-drag-finish', area);
 
     canvas.style.pointerEvents = 'none';
@@ -49,6 +49,7 @@ canvas.addEventListener('mouseup', e => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 });
 
+// 그 지금은 파란 점선인데 드래그했을때 영역 그려주는 함수
 function drawSelection() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.setLineDash([6]);
@@ -61,6 +62,7 @@ function drawSelection() {
     ctx.strokeRect(x, y, w, h);
 }
 
+// 드래그 request에서 부르는 핸들러인데 역할은 배경을 바꿔줘 ㅎㅎ
 window.electronAPI.onEnableDrag(() => {
     console.log("[overlay] drag mode enabled");
     document.getElementById('backdrop').style.background='rgba(0,0,0,0.5)';

@@ -1,6 +1,6 @@
 const { app, BrowserWindow, ipcMain, desktopCapturer, screen} = require('electron');
-const path = require('path');
-const { spawn } = require('child_process');
+const path = require('path'); // 불러오면 디렉토리 경로 쓸 수 있음
+const { spawn } = require('child_process'); // 외부 프로그램 쓸 수 있게 해줌 여기서는 파이썬 쓸라고 가져옴
 
 
 let mainWindow;
@@ -11,6 +11,7 @@ app.whenReady().then(async () => {
     const { screen } = require('electron');
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width, height } = primaryDisplay.workAreaSize;
+    // 여기 위에는 첫번째 디스플레이 사이즈 가져와서 전체화면 크기로 만들라고 화면 크기 불러올라고 설정
     console.log(width, height)
     console.log("[main] 앱 시작");
     mainWindow = new BrowserWindow({
@@ -18,6 +19,7 @@ app.whenReady().then(async () => {
         height: height,
         x: 0,
         y: 0,
+        // 위에는 좌표랑 크기, 아래도 대충 이름 보면 알겠지?
         transparent: true,
         frame: false,
         alwaysOnTop: true,
@@ -26,13 +28,16 @@ app.whenReady().then(async () => {
         focusable: false,
         resizable: false,
         webPreferences: {
+            // 여기는 웹 설정 부분인데 그냥 AI한테 물어보소
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false
         }
     });
     mainWindow.loadFile('overlay.html');
+    // 이게 변수 이름은 mainWindow인데 이거 매인 윈도우가 아니라  화면 캡쳐하는 부분 설정할때 쓰는 overlay 윈도우야
     mainWindow.setIgnoreMouseEvents(true);
+    // 마우스 입력 안되게 설정
 
     screenCaptureWindow = new BrowserWindow({
         width: 1200,
@@ -47,11 +52,14 @@ app.whenReady().then(async () => {
             nodeIntegration: false
         }
     });
+    // Screen capture window가 놀랍게도 메인 윈도우 역할을 함.
+    // 여기서 캡쳐한거랑 ocr결과랑 화면에 디스플레이함
 
     console.log("[main] 화면 소스 탐색 중...");
     const sources = await desktopCapturer.getSources({ types: ['screen'] });
     console.log(sources.length)
     screenCaptureWindow.loadFile('index.html');
+    // 절대 이거 loadfile 위치 옮기지 말것
     if (sources.length > 0) {
         const sourceId = sources[0].id;
         console.log("[main] 화면 소스 선택됨:", sourceId);
@@ -63,6 +71,7 @@ app.whenReady().then(async () => {
     } else {
         console.error("[main] 화면 소스 없음!");
     }
+    // 이 위에는 화면 sourceId를 renderer쪽에 전달하는 역할을 함
 
     // Python 시작
     try {
@@ -98,6 +107,7 @@ app.whenReady().then(async () => {
         }
     });
 
+    // 화면에서 영역지정 눌렀을 때 Renderer에서 부르는 이벤트 핸들러 그 오버레이창을 맨 앞으로 끌고오고, 클릭 가능하게 만들고, enable-drag 이벤트 호출함
     ipcMain.on('request-drag-mode', () => {
         console.log("[main] request drag")
         mainWindow.setAlwaysOnTop(true, 'screen-saver');
@@ -106,6 +116,7 @@ app.whenReady().then(async () => {
 
     });
 
+    // 이건 overlay.js에서 부르는 이벤트 핸들러. 자르는 범위를 area-updated 이벤트로 넘기고 마우스 클릭 다시 무시시킴
     ipcMain.on('request-drag-finish', (event, cropArea) => {
         console.log('[main] request-drag-finish 수신:', cropArea);
         // 오버레이 클릭 무시 복구
