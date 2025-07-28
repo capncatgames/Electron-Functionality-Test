@@ -105,11 +105,21 @@ window.electronAPI.onScreenSource(async (sourceId) => {
 // 영역 업데이트 됐을 때 반영하는 핸들러
 window.electronAPI.onAreaUpdated((area) => {
     console.log('[renderer] area-updated 수신:', area);
-    // cropArea 변수 갱신 및 UI 반영
+    // 1. cropArea 변수 갱신
     cropArea = area;
+
+    // 2. 결과 텍스트 UI 반영
     document.getElementById('result').innerText =
         `선택 영역: x=${area.x}, y=${area.y}, w=${area.width}, h=${area.height}`;
     appendLog(`영역 업데이트됨: ${JSON.stringify(area)}`);
+
+    // 3.preview 캔버스 크기 조절 및 표시
+    const previewCanvas = document.getElementById('preview');
+    if (previewCanvas) {
+        previewCanvas.width = area.width;
+        previewCanvas.height = area.height;
+        previewCanvas.style.display = 'block'; // 캔버스를 보이게 함
+    }
 });
 
 // 로그 업데이트 될때마다 자동으로 스크롤 (그니까 최신로그 보게 하는거)

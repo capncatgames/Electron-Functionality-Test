@@ -2,10 +2,17 @@ const canvas = document.getElementById('selectCanvas');
 const ctx = canvas.getContext('2d');
 let isSelecting = false, startX, startY, endX, endY;
 
+// 드래그 request에서 부르는 핸들러인데 역할은 배경을 바꿔줘 ㅎㅎ
+window.electronAPI.onEnableDrag(() => {
+    console.log("[overlay] drag mode enabled");
+    document.getElementById('backdrop').style.background='rgba(0,0,0,0.5)';
+    canvas.style.pointerEvents='auto';
+});
+
+
 canvas.addEventListener('mousedown', (e) => {
     isSelecting = true;
     const rect = canvas.getBoundingClientRect();
-
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
 
@@ -27,23 +34,25 @@ canvas.addEventListener('mousemove', (e) => {
 });
 
 canvas.addEventListener('mouseup', e => {
-    isSelecting=false;
-    const { left, top, width: cw, height: ch } = canvas.getBoundingClientRect();
-    const scaleX=canvas.width/cw, scaleY=canvas.height/ch;
-    endX=(e.clientX-left)*scaleX;
-    endY=(e.clientY-top)*scaleY;
-    drawSelection();
-    // 계산된 영역 저장
-    const area = {
-        x: Math.min(startX,endX),
-        y: Math.min(startY,endY),
-        width: Math.abs(endX-startX),
-        height: Math.abs(endY-startY)
-    };
+    isSelecting = false;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
 
+    endX = (e.clientX - rect.left) * scaleX;
+    endY = (e.clientY - rect.top) * scaleY;
+    drawSelection();
+
+    const area = {
+        x: Math.round(Math.min(startX, endX)),
+        y: Math.round(Math.min(startY, endY)),
+        width: Math.round(Math.abs(endX - startX)),
+        height: Math.round(Math.abs(endY - startY))
+    };
     // 계산된 영역을 main으로 전송
     window.electronAPI.sendMessage('request-drag-finish', area);
 
+    // 드래그 모드 종료 및 UI 초기화
     canvas.style.pointerEvents = 'none';
     document.getElementById('backdrop').style.background = 'rgba(0,0,0,0)';
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -62,9 +71,3 @@ function drawSelection() {
     ctx.strokeRect(x, y, w, h);
 }
 
-// 드래그 request에서 부르는 핸들러인데 역할은 배경을 바꿔줘 ㅎㅎ
-window.electronAPI.onEnableDrag(() => {
-    console.log("[overlay] drag mode enabled");
-    document.getElementById('backdrop').style.background='rgba(0,0,0,0.5)';
-    canvas.style.pointerEvents='auto';
-});
