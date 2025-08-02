@@ -21,22 +21,36 @@ document.getElementById('start').addEventListener('click', () => {
     // 그리고 녹화한 영상에서 이미지 1초마다 자름 (우리가 설정한 영역만큼)
     intervalId = setInterval(() => {
         try {
+            const video = document.getElementById('screenVideo');
+
+            // 1. 오버레이 캔버스의 고정 해상도 (좌표계 기준)
+            const overlayCanvasWidth = 1920;
+            const overlayCanvasHeight = 1080;
+
+            // 2. 실제 비디오 해상도와 오버레이 좌표계 사이의 스케일링 비율 계산
+            const scaleX = video.videoWidth / overlayCanvasWidth;
+            const scaleY = video.videoHeight / overlayCanvasHeight;
+
+            // 3. cropArea 좌표를 실제 비디오 좌표계에 맞게 보정
+            const sourceX = cropArea.x * scaleX;
+            const sourceY = cropArea.y * scaleY;
+            const sourceWidth = cropArea.width * scaleX;
+            const sourceHeight = cropArea.height * scaleY;
+
+            // 4. 보정된 좌표로 비디오의 특정 영역을 잘라내어 캔버스에 그리기
+            const canvas = document.getElementById('preview');
+            const ctx = canvas.getContext('2d');
             ctx.drawImage(
                 video,
-                cropArea.x, cropArea.y, cropArea.width, cropArea.height,
-                0, 0, cropArea.width, cropArea.height
+                sourceX, sourceY, sourceWidth, sourceHeight, // 원본 비디오에서 잘라낼 영역 (보정됨)
+                0, 0, cropArea.width, cropArea.height      // preview 캔버스에 그릴 위치와 크기
             );
-            // 자른 이미지 base64로 바꿈
+
+            // 5. base64 변환 및 전송 (기존과 동일)
             const base64 = canvas.toDataURL('image/jpeg').split(',')[1];
-
-            if (!base64) {
-                console.warn("[renderer] base64 변환 실패");
-                return;
+            if (base64) {
+                window.electronAPI.sendBase64ToPython(base64);
             }
-
-            console.log("[renderer] base64 생성, 길이:", base64.length);
-            // 그리고 바꾼 base64 main.js로 전송. main에서 파이썬이랑 연동시킴
-            window.electronAPI.sendBase64ToPython(base64);
         } catch (err) {
             console.error("[renderer] drawImage 또는 base64 에러:", err);
         }
@@ -130,6 +144,13 @@ function appendLog(msg) {
     container.scrollTop = container.scrollHeight;
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    appendLog("애플리케이션 시작됨");
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const dimensions = await window.electronAPI.getScreenDimensions();
+        screenDimensions = dimensions;
+        appendLog(`애플리케이션 시작됨. 화면 해상도: ${screenDimensions.width}x${screenDimensions.height}`);
+    } catch (error) {
+        console.error('화면 해상도를 가져오는 데 실패했습니다:', error);
+        appendLog('오류: 화면 해상도를 가져올 수 없습니다.');
+    }
 });

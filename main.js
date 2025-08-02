@@ -9,8 +9,7 @@ let pyProc;
 
 app.whenReady().then(async () => {
     const { screen } = require('electron');
-    const primaryDisplay = screen.getPrimaryDisplay();
-    const { width, height } = primaryDisplay.workAreaSize;
+    const { width, height } = screen.getPrimaryDisplay().size;
     // 여기 위에는 첫번째 디스플레이 사이즈 가져와서 전체화면 크기로 만들라고 화면 크기 불러올라고 설정
     console.log(width, height)
     console.log("[main] 앱 시작");
@@ -46,7 +45,6 @@ app.whenReady().then(async () => {
         frame: true,
         alwaysOnTop: true,
         webPreferences: {
-            additionalArguments: [`--width=${width}`, `--height=${height}`],
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false
@@ -121,7 +119,14 @@ app.whenReady().then(async () => {
         console.log('[main] request-drag-finish 수신:', cropArea);
         // 오버레이 클릭 무시 복구
         mainWindow.setIgnoreMouseEvents(true);
+        // 오버레이 상단 취소
+        mainWindow.setAlwaysOnTop(false);
         // 기능 창(renderer)에 영역 업데이트 전달
         screenCaptureWindow.webContents.send('area-updated', cropArea);
+    });
+
+    ipcMain.handle('get-screen-dimensions', () => {
+        const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+        return { width, height };
     });
 });
