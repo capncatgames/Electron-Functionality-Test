@@ -154,3 +154,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         appendLog('오류: 화면 해상도를 가져올 수 없습니다.');
     }
 });
+
+document.getElementById('chatbotBtn').addEventListener('click', () => {
+    console.log("[renderer] 챗봇 창 열기 요청");
+    appendLog("챗봇 창을 여는 중...");
+    window.electronAPI.sendMessage('open-chatbot');
+});

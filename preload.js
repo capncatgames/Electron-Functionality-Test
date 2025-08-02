@@ -8,5 +8,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onMessage: (channel, callback) => ipcRenderer.on(channel, (event, ...args) => callback(...args)),
     onEnableDrag: (cb) => ipcRenderer.on('enable-drag', () => cb()),
     onAreaUpdated: (cb) => ipcRenderer.on('area-updated', (_, area) => cb(area)),
-    getScreenDimensions: () => ipcRenderer.invoke('get-screen-dimensions')
+    getScreenDimensions: () => ipcRenderer.invoke('get-screen-dimensions'),
+    getHfToken: () => ipcRenderer.invoke('get-hf-token')
 });

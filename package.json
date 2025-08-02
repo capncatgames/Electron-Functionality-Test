@@ -7,6 +7,8 @@
     "start": "electron ."
   },
   "dependencies": {
+    "@huggingface/inference": "^4.6.1",
+    "dotenv": "^17.2.1",
     "electron": "^37.2.0"
   }
 }
