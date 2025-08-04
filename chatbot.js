@@ -1,7 +1,5 @@
-(async () => {
-    const MODEL_NAME = 'microsoft/DialoGPT-medium';
-})();
-
+// 전역 변수로 선언
+let HF_API_TOKEN = '';
 let chatHistory = [];
 
 // DOM 요소들
@@ -9,6 +7,18 @@ const chatMessages = document.getElementById('chatMessages');
 const messageInput = document.getElementById('messageInput');
 const sendBtn = document.getElementById('sendBtn');
 const typingIndicator = document.getElementById('typingIndicator');
+
+// 페이지 로드 시 토큰 초기화
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        HF_API_TOKEN = await window.electronAPI.getHfToken();
+        console.log("[chatbot] API 토큰 로드 완료");
+        messageInput.focus();
+    } catch (error) {
+        console.error("[chatbot] API 토큰 로드 실패:", error);
+        addMessage('오류: API 토큰을 불러올 수 없습니다. .env 파일을 확인해 주세요.', 'bot');
+    }
+});
 
 // 엔터키로 메시지 전송
 messageInput.addEventListener('keypress', (e) => {
@@ -52,6 +62,7 @@ async function sendMessage() {
         } else if (error.message.includes('503')) {
             errorMessage = '모델이 로딩 중입니다. 잠시 후 다시 시도해주세요.';
         }
+
         addMessage(errorMessage, 'bot');
     } finally {
         // UI 복구
@@ -68,21 +79,22 @@ async function callHuggingFaceAPI(userMessage) {
 
     // 대화 기록에 현재 메시지 추가
     chatHistory.push({ role: "user", content: userMessage });
-    // 최근 5개 대화만 유지 (토큰 제한 고려)
+
+    // 최근 10개 메시지만 유지 (토큰 제한 고려)
     if (chatHistory.length > 10) {
         chatHistory = chatHistory.slice(-10);
     }
 
     const payload = {
-        model: "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B:featherless-ai",
+        model: "MLP-KTLim/llama-3-Korean-Bllossom-8B:featherless-ai",
         messages: [
             {
                 role: "system",
-                content: "You are a helpful AI assistant. Please provide clear and concise responses."
+                content: "당신은 유능한 AI 어시스턴트입니다. 사용자의 질문에 대해 친절하고 정확하게 답변해주세요. 한국어 질문에는 한국어로, 영어 질문에는 영어로 답변해주세요."
             },
             ...chatHistory
         ],
-        max_tokens: 500,
+        max_tokens: 800,
         temperature: 0.7,
         top_p: 0.9,
         stream: false
@@ -108,24 +120,19 @@ async function callHuggingFaceAPI(userMessage) {
     const data = await response.json();
     console.log("[chatbot] API 응답:", data);
 
-    // 응답 처리
+    // Chat Completions 응답 처리 (올바른 방식)
     if (data.error) {
         throw new Error(data.error.message || data.error);
     }
 
-    let botResponse = '';
-    if (Array.isArray(data) && data.length > 0) {
-        botResponse = data[0].generated_text || '';
-
-        if (botResponse.startsWith(userMessage)) {
-            botResponse = botResponse.substring(userMessage.length).trim();
-        }
-    } else if (data.generated_text) {
-        botResponse = data.generated_text.trim();
+    if (!data.choices || data.choices.length === 0) {
+        throw new Error('응답에서 선택지를 찾을 수 없습니다.');
     }
 
+    const botResponse = data.choices[0].message.content.trim();
+
     if (!botResponse || botResponse.length < 2) {
-        botResponse = '죄송합니다. 응답을 생성할 수 없었습니다. 다시 시도해 주세요.';
+        throw new Error('빈 응답을 받았습니다.');
     }
 
     // 대화 기록에 봇 응답 추가
@@ -153,15 +160,3 @@ function showTypingIndicator() {
 function hideTypingIndicator() {
     typingIndicator.style.display = 'none';
 }
-
-// 페이지 로드 시 입력창에 포커스
-document.addEventListener('DOMContentLoaded', async () => {
-    try {
-        HF_API_TOKEN = await window.electronAPI.getHfToken();
-        console.log("[chatbot] API 토큰 로드 완료");
-        messageInput.focus();
-    } catch (error) {
-        console.error("[chatbot] API 토큰 로드 실패:", error);
-        addMessage('오류: API 토큰을 불러올 수 없습니다. .env 파일을 확인해 주세요.', 'bot');
-    }
-});
