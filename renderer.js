@@ -4,6 +4,7 @@ let intervalId = null;
 let audioStream = null;
 let audioCtx = null;
 let detectRafId = null;
+let currentLoopbackDeviceId = null;
 
 // 이거는 뭐 별거 없는데 시작 누르면 발동하는 이벤트 핸들러임
 document.getElementById('start').addEventListener('click', () => {
@@ -174,30 +175,32 @@ document.getElementById('stopAudioBtn').addEventListener('click', () => {
     stopAudioCapture();
 });
 
+// "오디오 장치 선택" 버튼 이벤트 리스너 추가
+document.getElementById('pickAudioDeviceBtn').addEventListener('click', () => {
+    console.log('[renderer] 오디오 장치 선택 창 열기 요청');
+    window.electronAPI.openAudioDevicePicker();
+});
+
+// main 프로세스에서 업데이트된 장치 ID를 받는 리스너
+window.electronAPI.onUpdateAudioDeviceId((device) => {
+    console.log(`[renderer] 선택된 오디오 장치 업데이트: ${device.id}`);
+    currentLoopbackDeviceId = device.id;
+    document.getElementById('selected-audio-device').textContent = `선택된 장치: ${device.label}`;
+});
+
 async function startAudioCapture() {
     console.log('[renderer] startAudioCapture 시작');
-    let loopbackDeviceId;
-    try {
-        loopbackDeviceId = await window.electronAPI.getLoopbackDeviceId();
-        console.log('[renderer] loopbackDeviceId:', loopbackDeviceId);
-        if (!loopbackDeviceId) throw new Error('루프백 장치 ID가 비어있음');
-    } catch (err) {
-        console.error('[renderer] getLoopbackDeviceId 오류:', err);
-        return;
-    }
 
-    let stream;
-    try {
-        console.log('[renderer] getUserMedia 호출');
-        stream = await navigator.mediaDevices.getUserMedia({
-            audio: { deviceId: loopbackDeviceId, channelCount: 2, sampleRate: 48000 },
-            video: false
-        });
-        console.log('[renderer] 오디오 스트림 획득 성공');
-    } catch (err) {
-        console.error('[renderer] getUserMedia 오류:', err);
-        return;
+    if (!currentLoopbackDeviceId) {
+        alert('오디오 장치를 먼저 선택해주세요!');
+        throw new Error('루프백 장치가 선택되지 않음');
     }
+    console.log(`[renderer] 사용할 deviceId: ${currentLoopbackDeviceId}`);
+
+    audioStream = await navigator.mediaDevices.getUserMedia({
+        audio: { deviceId: currentLoopbackDeviceId, channelCount: 2, sampleRate: 48000 },
+        video: false
+    });
 
     let audioCtx, source, splitter, analyserL, analyserR, dataL, dataR;
     try {
