@@ -141,6 +141,14 @@ app.whenReady().then(async () => {
         console.log("[main] opening chat")
         createChatbotWindow();
     });
+
+    ipcMain.handle('get-loopback-device-id', async () => {
+        console.log('[main] get-loopback-device-id 요청 수신');
+        // 실제 환경에 맞게 deviceId를 고정하거나 찾으세요.
+        const deviceId = 'your-loopback-device-id';
+        console.log('[main] 반환할 loopbackDeviceId:', deviceId);
+        return deviceId;
+    });
 });
 
 function createChatbotWindow() {

@@ -1,6 +1,9 @@
 let videoStream;
 let cropArea = { x: 100, y: 100, width: 400, height: 300 }; // 요거 초기 자르는 부분
 let intervalId = null;
+let audioStream = null;
+let audioCtx = null;
+let detectRafId = null;
 
 // 이거는 뭐 별거 없는데 시작 누르면 발동하는 이벤트 핸들러임
 document.getElementById('start').addEventListener('click', () => {
@@ -160,3 +163,136 @@ document.getElementById('chatbotBtn').addEventListener('click', () => {
     appendLog("챗봇 창을 여는 중...");
     window.electronAPI.sendMessage('open-chatbot');
 });
+
+// 1) “오디오 감지 시작” 버튼 클릭 시 startAudioCapture() 호출
+document.getElementById('startAudioBtn').addEventListener('click', () => {
+    console.log('[renderer] 오디오 감지 시작 버튼 클릭');
+    startAudioCapture().catch(err => console.error('[renderer] startAudioCapture 오류:', err));
+});
+document.getElementById('stopAudioBtn').addEventListener('click', () => {
+    console.log('[renderer] 감지 중지 버튼 클릭');
+    stopAudioCapture();
+});
+
+async function startAudioCapture() {
+    console.log('[renderer] startAudioCapture 시작');
+    let loopbackDeviceId;
+    try {
+        loopbackDeviceId = await window.electronAPI.getLoopbackDeviceId();
+        console.log('[renderer] loopbackDeviceId:', loopbackDeviceId);
+        if (!loopbackDeviceId) throw new Error('루프백 장치 ID가 비어있음');
+    } catch (err) {
+        console.error('[renderer] getLoopbackDeviceId 오류:', err);
+        return;
+    }
+
+    let stream;
+    try {
+        console.log('[renderer] getUserMedia 호출');
+        stream = await navigator.mediaDevices.getUserMedia({
+            audio: { deviceId: loopbackDeviceId, channelCount: 2, sampleRate: 48000 },
+            video: false
+        });
+        console.log('[renderer] 오디오 스트림 획득 성공');
+    } catch (err) {
+        console.error('[renderer] getUserMedia 오류:', err);
+        return;
+    }
+
+    let audioCtx, source, splitter, analyserL, analyserR, dataL, dataR;
+    try {
+        console.log('[renderer] AudioContext 생성');
+        audioCtx = new AudioContext();
+        source = audioCtx.createMediaStreamSource(stream);
+        splitter = audioCtx.createChannelSplitter(2);
+        analyserL = audioCtx.createAnalyser();
+        analyserR = audioCtx.createAnalyser();
+
+        analyserL.fftSize = analyserR.fftSize = 2048;
+        dataL = new Uint8Array(analyserL.frequencyBinCount);
+        dataR = new Uint8Array(analyserR.frequencyBinCount);
+
+        source.connect(splitter);
+        splitter.connect(analyserL, 0);
+        splitter.connect(analyserR, 1);
+
+        console.log('[renderer] AnalyserNode 설정 완료');
+    } catch (err) {
+        console.error('[renderer] Web Audio API 설정 오류:', err);
+        return;
+    }
+
+    let lastDetect = 0;
+    const binSize = audioCtx.sampleRate / analyserL.fftSize;
+    const lowBin = Math.floor(2000 / binSize);
+    const highBin = Math.floor(8000 / binSize);
+    console.log('[renderer] 주파수 대역:', lowBin, '-', highBin);
+
+    function detectLoop() {
+        try {
+            analyserL.getByteFrequencyData(dataL);
+            analyserR.getByteFrequencyData(dataR);
+        } catch (err) {
+            console.error('[renderer] getByteFrequencyData 오류:', err);
+            return;
+        }
+
+        const now = performance.now();
+        let peakL = 0, peakR = 0;
+        for (let i = lowBin; i <= highBin; i++) {
+            peakL = Math.max(peakL, dataL[i]);
+            peakR = Math.max(peakR, dataR[i]);
+        }
+
+        // 로그: 매 프레임 좌우 피크 값
+        console.log(`[renderer] 피크: L=${peakL}, R=${peakR}`);
+
+        if (now - lastDetect > 1000 && (peakL > 200 || peakR > 200)) {
+            lastDetect = now;
+            const diff = peakL - peakR;
+            let direction = '중앙';
+            if (diff > 50) direction = '왼쪽';
+            else if (diff < -50) direction = '오른쪽';
+            console.log(`[renderer] ${new Date().toLocaleTimeString()} – 총성 감지 (L:${peakL}, R:${peakR}) → ${direction}`);
+        }
+
+        requestAnimationFrame(detectLoop);
+    }
+
+    console.log('[renderer] 검출 루프 시작');
+    detectLoop();
+}
+
+function stopAudioCapture() {
+    // 2.1) RAF 루프 취소
+    if (typeof detectRafId === 'number') {
+        cancelAnimationFrame(detectRafId);
+        console.log('[renderer] detectLoop 중지 (cancelAnimationFrame)');
+        detectRafId = null;
+    } else {
+        console.warn('[renderer] detectLoop ID 없음—이미 중지되었거나 startAudioCapture가 호출되지 않음');
+    }
+
+    // 2.2) 스트림 트랙 정지
+    if (audioStream) {
+        audioStream.getTracks().forEach(track => {
+            track.stop();
+            console.log(`[renderer] audioStream 트랙 중지: ${track.kind}`);
+        });
+        audioStream = null;
+    } else {
+        console.warn('[renderer] audioStream 없음—getUserMedia가 호출되지 않았거나 이미 중지됨');
+    }
+
+    // 2.3) AudioContext 종료
+    if (audioCtx) {
+        audioCtx.close().then(() => {
+            console.log('[renderer] AudioContext 종료 완료');
+        }).catch(err => {
+            console.error('[renderer] AudioContext 종료 오류:', err);
+        });
+        audioCtx = null;
+    } else {
+        console.warn('[renderer] audioCtx 없음—AudioContext가 생성되지 않았거나 이미 종료됨');
+    }
+}
