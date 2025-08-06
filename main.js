@@ -59,7 +59,7 @@ function createDevicePickerWindow() {
     devicePickerWindow = new BrowserWindow({
         width: 500,
         height: 400,
-        title: '오디오 장치 선택',
+        title: '오디오 출력 장치 선택',
         modal: true,
         parent: screenCaptureWindow, // 메인 창에 종속되는 모달 창
         webPreferences: {
@@ -210,14 +210,16 @@ app.whenReady().then(async () => {
         createDevicePickerWindow();
     });
 
-    ipcMain.on('set-audio-device-id', (event, deviceId) => {
-        console.log(`[main] 오디오 장치 선택됨: ${deviceId}`);
-        selectedLoopbackDeviceId = deviceId;
+    ipcMain.on('set-audio-device-id', (event, deviceData) => {
+        console.log(`[main] 오디오 출력 장치 선택됨: ${deviceData.id}`);
+        console.log(`[main] 장치 라벨: ${deviceData.label}`);
+
+        selectedLoopbackDeviceId = deviceData.id;
 
         // 메인 렌더러에 선택된 장치 정보 전달
         screenCaptureWindow.webContents.send('updated-audio-device-id', {
-            id: deviceId,
-            label: `장치 ID: ${deviceId.substring(0, 8)}...`
+            id: deviceData.id,
+            label: deviceData.label
         });
 
         // 장치 선택 창 닫기
@@ -225,7 +227,6 @@ app.whenReady().then(async () => {
             devicePickerWindow.close();
         }
     });
-
     // 기존 get-loopback-device-id 핸들러를 수정
     ipcMain.handle('get-loopback-device-id', async () => {
         console.log(`[main] get-loopback-device-id 요청. 현재 선택된 ID: ${selectedLoopbackDeviceId}`);

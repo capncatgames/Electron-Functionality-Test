@@ -192,21 +192,41 @@ async function startAudioCapture() {
     console.log('[renderer] startAudioCapture 시작');
 
     if (!currentLoopbackDeviceId) {
-        alert('오디오 장치를 먼저 선택해주세요!');
-        throw new Error('루프백 장치가 선택되지 않음');
+        alert('오디오 출력 장치를 먼저 선택해주세요!');
+        throw new Error('출력 장치가 선택되지 않음');
     }
-    console.log(`[renderer] 사용할 deviceId: ${currentLoopbackDeviceId}`);
 
-    audioStream = await navigator.mediaDevices.getUserMedia({
-        audio: { deviceId: currentLoopbackDeviceId, channelCount: 2, sampleRate: 48000 },
-        video: false
-    });
+    console.log(`[renderer] 선택된 출력 장치 ID: ${currentLoopbackDeviceId}`);
 
-    let audioCtx, source, splitter, analyserL, analyserR, dataL, dataR;
+    try {
+        // 시스템 오디오 캡처 (getDisplayMedia 사용)
+        console.log('[renderer] 시스템 오디오 캡처 시도 중...');
+
+        audioStream = await navigator.mediaDevices.getDisplayMedia({
+            video: false,
+            audio: {
+                channelCount: 2,
+                sampleRate: 48000,
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false
+            }
+        });
+
+        console.log('[renderer] 시스템 오디오 스트림 획득 성공');
+
+    } catch (err) {
+        console.error('[renderer] 시스템 오디오 캡처 실패:', err);
+        alert('시스템 오디오 캡처에 실패했습니다. 브라우저에서 오디오 공유를 허용해주세요.');
+        return;
+    }
+
+    let source, splitter, analyserL, analyserR, dataL, dataR;
+
     try {
         console.log('[renderer] AudioContext 생성');
         audioCtx = new AudioContext();
-        source = audioCtx.createMediaStreamSource(stream);
+        source = audioCtx.createMediaStreamSource(audioStream); // audioStream 사용
         splitter = audioCtx.createChannelSplitter(2);
         analyserL = audioCtx.createAnalyser();
         analyserR = audioCtx.createAnalyser();
@@ -242,13 +262,16 @@ async function startAudioCapture() {
 
         const now = performance.now();
         let peakL = 0, peakR = 0;
+
         for (let i = lowBin; i <= highBin; i++) {
             peakL = Math.max(peakL, dataL[i]);
             peakR = Math.max(peakR, dataR[i]);
         }
 
-        // 로그: 매 프레임 좌우 피크 값
-        console.log(`[renderer] 피크: L=${peakL}, R=${peakR}`);
+        // 로그: 매 프레임 좌우 피크 값 (너무 많으니 10프레임마다만)
+        if (Math.random() < 0.1) {
+            console.log(`[renderer] 피크: L=${peakL}, R=${peakR}`);
+        }
 
         if (now - lastDetect > 1000 && (peakL > 200 || peakR > 200)) {
             lastDetect = now;
@@ -256,10 +279,12 @@ async function startAudioCapture() {
             let direction = '중앙';
             if (diff > 50) direction = '왼쪽';
             else if (diff < -50) direction = '오른쪽';
+
             console.log(`[renderer] ${new Date().toLocaleTimeString()} – 총성 감지 (L:${peakL}, R:${peakR}) → ${direction}`);
+            appendLog(`총성 감지: ${direction} 방향 (L:${peakL}, R:${peakR})`);
         }
 
-        requestAnimationFrame(detectLoop);
+        detectRafId = requestAnimationFrame(detectLoop);
     }
 
     console.log('[renderer] 검출 루프 시작');
