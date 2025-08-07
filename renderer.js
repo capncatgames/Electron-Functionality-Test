@@ -191,12 +191,7 @@ window.electronAPI.onUpdateAudioDeviceId((device) => {
 async function startAudioCapture() {
     console.log('[renderer] startAudioCapture 시작');
 
-    if (!currentLoopbackDeviceId) {
-        alert('오디오 출력 장치를 먼저 선택해주세요!');
-        throw new Error('출력 장치가 선택되지 않음');
-    }
-
-    console.log(`[renderer] 선택된 출력 장치 ID: ${currentLoopbackDeviceId}`);
+    // console.log(`[renderer] 선택된 출력 장치 ID: ${currentLoopbackDeviceId}`);
 
     try {
         // 시스템 오디오 캡처 (getDisplayMedia 사용)
@@ -220,14 +215,18 @@ async function startAudioCapture() {
             console.log('[renderer] 불필요한 비디오 트랙 중지 완료');
         }
 
-        // 3. 오디오 트랙만 남은 스트림을 전역 변수에 할당합니다.
         audioStream = stream;
-
         console.log('[renderer] 시스템 오디오 스트림 획득 성공');
 
     } catch (err) {
         console.error('[renderer] 시스템 오디오 캡처 실패:', err);
-        alert('시스템 오디오 캡처에 실패했습니다. 브라우저에서 오디오 공유를 허용해주세요.');
+
+        // 사용자에게 좀 더 명확한 안내를 제공합니다.
+        if (err.name === 'NotAllowedError') {
+            alert('화면 공유를 취소했습니다. 오디오를 감지하려면 화면과 오디오 공유를 모두 허용해야 합니다.');
+        } else {
+            alert('시스템 오디오 캡처에 실패했습니다. 공유 팝업에서 "시스템 오디오 공유" 옵션을 선택했는지 확인해주세요.');
+        }
         return;
     }
 
