@@ -1,282 +1,199 @@
 let videoStream;
-let cropArea = { x: 100, y: 100, width: 400, height: 300 }; // 요거 초기 자르는 부분
+let cropArea = { x: 100, y: 100, width: 400, height: 300 };
 let intervalId = null;
 let audioStream = null;
 let audioCtx = null;
 let detectRafId = null;
-let currentLoopbackDeviceId = null;
+let screenDimensions = null;
 
-// 이거는 뭐 별거 없는데 시작 누르면 발동하는 이벤트 핸들러임
+// 'Start' 버튼: 화면 캡처 및 분석 시작
 document.getElementById('start').addEventListener('click', () => {
     if (!videoStream) {
         console.error("[renderer] videoStream 없음! 시작 실패");
         return;
     }
-
-    // 비디오 녹화하고 html에다가 영상 전송함
-    const canvas = document.getElementById('preview');
-    const ctx = canvas.getContext('2d');
-    const video = document.getElementById('screenVideo');
-
-    canvas.width = cropArea.width;
-    canvas.height = cropArea.height;
+    if (intervalId) {
+        console.log("[renderer] 이미 캡처가 진행 중입니다.");
+        return;
+    }
 
     console.log("[renderer] 캡처 시작");
-    // 그리고 녹화한 영상에서 이미지 1초마다 자름 (우리가 설정한 영역만큼)
     intervalId = setInterval(() => {
         try {
             const video = document.getElementById('screenVideo');
+            if (video.readyState < video.HAVE_METADATA) return;
 
-            // 1. 오버레이 캔버스의 고정 해상도 (좌표계 기준)
-            const overlayCanvasWidth = 1920;
-            const overlayCanvasHeight = 1080;
+            const scaleX = video.videoWidth / screenDimensions.width;
+            const scaleY = video.videoHeight / screenDimensions.height;
 
-            // 2. 실제 비디오 해상도와 오버레이 좌표계 사이의 스케일링 비율 계산
-            const scaleX = video.videoWidth / overlayCanvasWidth;
-            const scaleY = video.videoHeight / overlayCanvasHeight;
-
-            // 3. cropArea 좌표를 실제 비디오 좌표계에 맞게 보정
             const sourceX = cropArea.x * scaleX;
             const sourceY = cropArea.y * scaleY;
             const sourceWidth = cropArea.width * scaleX;
             const sourceHeight = cropArea.height * scaleY;
 
-            // 4. 보정된 좌표로 비디오의 특정 영역을 잘라내어 캔버스에 그리기
             const canvas = document.getElementById('preview');
+            canvas.width = cropArea.width;
+            canvas.height = cropArea.height;
             const ctx = canvas.getContext('2d');
-            ctx.drawImage(
-                video,
-                sourceX, sourceY, sourceWidth, sourceHeight, // 원본 비디오에서 잘라낼 영역 (보정됨)
-                0, 0, cropArea.width, cropArea.height      // preview 캔버스에 그릴 위치와 크기
-            );
 
-            // 5. base64 변환 및 전송 (기존과 동일)
+            ctx.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, cropArea.width, cropArea.height);
+
             const base64 = canvas.toDataURL('image/jpeg').split(',')[1];
             if (base64) {
                 window.electronAPI.sendBase64ToPython(base64);
             }
         } catch (err) {
             console.error("[renderer] drawImage 또는 base64 에러:", err);
+            clearInterval(intervalId);
+            intervalId = null;
         }
     }, 1000);
 });
 
-// stop누르면 중지시키는거
+// 'Stop' 버튼: 화면 캡처 중지
 document.getElementById('stop').addEventListener('click', () => {
-    console.log("[renderer] 캡처 중지");
-    clearInterval(intervalId);
-    intervalId = null;
+    if (intervalId) {
+        console.log("[renderer] 캡처 중지");
+        clearInterval(intervalId);
+        intervalId = null;
+    }
 });
 
-// main.js 파이썬 부분에서 OCR 결과를 받았을때 부르는 이벤트 핸들러
-// 여기서는 받은 결과 그 log-container라는 그 검은 공간에다가 출력시키는거
-window.electronAPI.onOCRResult((msg) => {
-    console.log("[renderer] OCR 결과 수신");
-    const log = document.getElementById('log');
-    log.textContent += msg + '\n';
-    const container = document.getElementById('log-container');
-    container.scrollTop = container.scrollHeight;
-});
-
-// 이거 영역지정 버튼인데 이거 누르면 영역지정 활성화 할 수 있도록 main.js 영역지정 request 이벤트 호출함
+// '영역 지정' 버튼
 document.getElementById('selectAreaBtn').addEventListener('click', () => {
     console.log("[renderer] 영역 지정 요청");
-    appendLog("영역 지정 모드 활성화");
     window.electronAPI.sendMessage('request-drag-mode');
 });
 
-// 이거 처음에 sourceId 받아왔는지 확인하고 녹화하는부분.
-window.electronAPI.onScreenSource(async (sourceId) => {
-    console.log("[renderer] sourceId 수신:", sourceId);
-    // SourceId 있는지 확인
-    if (!sourceId) {
-        console.error("[renderer] sourceId가 undefined입니다!");
-        return;
-    }
+// '챗봇' 버튼
+document.getElementById('chatbotBtn').addEventListener('click', () => {
+    window.electronAPI.sendMessage('open-chatbot');
+});
 
+// '오디오 감지 시작' 버튼
+document.getElementById('startAudioBtn').addEventListener('click', startAudioCapture);
+
+// '오디오 감지 중지' 버튼
+document.getElementById('stopAudioBtn').addEventListener('click', stopAudioCapture);
+
+
+// Main 프로세스로부터 화면 소스 ID 수신
+window.electronAPI.onScreenSource(async (sourceId) => {
     try {
-        // 비디오 설정
         videoStream = await navigator.mediaDevices.getUserMedia({
             audio: false,
             video: {
                 mandatory: {
                     chromeMediaSource: 'desktop',
                     chromeMediaSourceId: sourceId,
-                    minWidth: 1920,
-                    maxWidth: 1920,
-                    minHeight: 1080,
-                    maxHeight: 1080
                 }
             }
         });
-
-        // 녹화 설정 및 시작
         const video = document.getElementById('screenVideo');
         video.srcObject = videoStream;
         await video.play();
-        console.log("[renderer] video stream 시작됨");
+        console.log("[renderer] 비디오 스트림 시작됨");
     } catch (e) {
         console.error("[renderer] getUserMedia 실패:", e);
     }
 });
 
-// 영역 업데이트 됐을 때 반영하는 핸들러
+// Main 프로세스로부터 OCR 결과 수신
+window.electronAPI.onOCRResult((msg) => {
+    appendLog(msg);
+});
+
+// Main 프로세스로부터 선택된 캡처 영역 업데이트 수신
 window.electronAPI.onAreaUpdated((area) => {
     console.log('[renderer] area-updated 수신:', area);
-    // 1. cropArea 변수 갱신
     cropArea = area;
-
-    // 2. 결과 텍스트 UI 반영
-    document.getElementById('result').innerText =
-        `선택 영역: x=${area.x}, y=${area.y}, w=${area.width}, h=${area.height}`;
-    appendLog(`영역 업데이트됨: ${JSON.stringify(area)}`);
-
-    // 3.preview 캔버스 크기 조절 및 표시
-    const previewCanvas = document.getElementById('preview');
-    if (previewCanvas) {
-        previewCanvas.width = area.width;
-        previewCanvas.height = area.height;
-        previewCanvas.style.display = 'block'; // 캔버스를 보이게 함
-    }
+    document.getElementById('result').innerText = `선택 영역: x=${area.x}, y=${area.y}, w=${area.width}, h=${area.height}`;
 });
 
-// 로그 업데이트 될때마다 자동으로 스크롤 (그니까 최신로그 보게 하는거)
-function appendLog(msg) {
-    const log = document.getElementById('log');
-    log.textContent += msg + '\n';
-    const container = document.getElementById('log-container');
-    container.scrollTop = container.scrollHeight;
-}
-
+// 페이지 로드 시 화면 해상도 가져오기
 document.addEventListener('DOMContentLoaded', async () => {
     try {
-        const dimensions = await window.electronAPI.getScreenDimensions();
-        screenDimensions = dimensions;
+        screenDimensions = await window.electronAPI.getScreenDimensions();
         appendLog(`애플리케이션 시작됨. 화면 해상도: ${screenDimensions.width}x${screenDimensions.height}`);
     } catch (error) {
-        console.error('화면 해상도를 가져오는 데 실패했습니다:', error);
-        appendLog('오류: 화면 해상도를 가져올 수 없습니다.');
+        console.error('화면 해상도 가져오기 실패:', error);
     }
 });
 
-document.getElementById('chatbotBtn').addEventListener('click', () => {
-    console.log("[renderer] 챗봇 창 열기 요청");
-    appendLog("챗봇 창을 여는 중...");
-    window.electronAPI.sendMessage('open-chatbot');
-});
 
-// 1) “오디오 감지 시작” 버튼 클릭 시 startAudioCapture() 호출
-document.getElementById('startAudioBtn').addEventListener('click', () => {
-    console.log('[renderer] 오디오 감지 시작 버튼 클릭');
-    startAudioCapture().catch(err => console.error('[renderer] startAudioCapture 오류:', err));
-});
-document.getElementById('stopAudioBtn').addEventListener('click', () => {
-    console.log('[renderer] 감지 중지 버튼 클릭');
-    stopAudioCapture();
-});
-
-// "오디오 장치 선택" 버튼 이벤트 리스너 추가
-document.getElementById('pickAudioDeviceBtn').addEventListener('click', () => {
-    console.log('[renderer] 오디오 장치 선택 창 열기 요청');
-    window.electronAPI.openAudioDevicePicker();
-});
-
-// main 프로세스에서 업데이트된 장치 ID를 받는 리스너
-window.electronAPI.onUpdateAudioDeviceId((device) => {
-    console.log(`[renderer] 선택된 오디오 장치 업데이트: ${device.id}`);
-    currentLoopbackDeviceId = device.id;
-    document.getElementById('selected-audio-device').textContent = `선택된 장치: ${device.label}`;
-});
-
+/**
+ * '화면의 소리' (시스템 오디오) 캡처를 요청하고 시작하는 함수
+ */
 async function startAudioCapture() {
     console.log('[renderer] startAudioCapture 시작');
-
-    // console.log(`[renderer] 선택된 출력 장치 ID: ${currentLoopbackDeviceId}`);
-
-    try {
-        console.log('[renderer] 시스템 오디오 캡처 시도 중...');
-
-        // ✅ 이 부분이 윈도우에 팝업을 요청하는 유일한 코드입니다.
-        const stream = await navigator.mediaDevices.getDisplayMedia({
-            video: true, // 반드시 true여야 합니다.
-            audio: true  // 반드시 true여야 합니다.
-        });
-
-        console.log('[renderer] 사용자가 공유를 허용했습니다. 스트림 획득 성공');
-
-        // 받아온 스트림에서 필요 없는 비디오 트랙은 바로 중지시켜 리소스를 아낍니다.
-        if (stream.getVideoTracks().length > 0) {
-            stream.getVideoTracks()[0].stop();
-            console.log('[renderer] 불필요한 비디오 트랙 중지 완료');
-        }
-
-        audioStream = stream;
-        console.log('[renderer] 시스템 오디오 스트림 획득 성공');
-
-    } catch (err) {
-        // 사용자가 팝업에서 '취소'를 누르면 NotAllowedError가 발생합니다.
-        if (err.name === 'NotAllowedError') {
-            console.log('[renderer] 사용자가 화면 공유를 취소했습니다.');
-            alert('오디오 감지를 위해서는 화면 공유 팝업에서 "공유"를 선택해야 합니다.');
-        } else {
-            // 다른 종류의 오류 (권한 문제 등)
-            console.error('[renderer] 시스템 오디오 캡처 실패:', err);
-            alert(`오디오 캡처에 실패했습니다. 오류: ${err.name}`);
-        }
-    }
-
-    let source, splitter, analyserL, analyserR, dataL, dataR;
-
-    try {
-        console.log('[renderer] AudioContext 생성');
-        audioCtx = new AudioContext();
-        source = audioCtx.createMediaStreamSource(audioStream); // audioStream 사용
-        splitter = audioCtx.createChannelSplitter(2);
-        analyserL = audioCtx.createAnalyser();
-        analyserR = audioCtx.createAnalyser();
-
-        analyserL.fftSize = analyserR.fftSize = 2048;
-        dataL = new Uint8Array(analyserL.frequencyBinCount);
-        dataR = new Uint8Array(analyserR.frequencyBinCount);
-
-        source.connect(splitter);
-        splitter.connect(analyserL, 0);
-        splitter.connect(analyserR, 1);
-
-        console.log('[renderer] AnalyserNode 설정 완료');
-    } catch (err) {
-        console.error('[renderer] Web Audio API 설정 오류:', err);
+    if (audioCtx) {
+        console.log("[renderer] 이미 오디오 감지가 실행 중입니다.");
         return;
     }
 
-    let lastDetect = 0;
+    try {
+        console.log('[renderer] 시스템 오디오 캡처 팝업을 요청합니다...');
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+            audio: true
+        });
+
+        console.log('[renderer] 사용자가 공유를 허용했습니다.');
+
+        if (stream.getVideoTracks().length > 0) {
+            stream.getVideoTracks()[0].stop();
+        }
+        audioStream = stream;
+
+        // 오디오 처리 및 분석 설정 함수 호출
+        setupAudioProcessing();
+
+    } catch (err) {
+        console.error(`[renderer] 팝업 요청 실패: ${err.name}`, err);
+        if (err.name === 'NotSupportedError' || err.name === 'NotAllowedError') {
+            alert('오디오 캡처가 시스템 설정에 의해 차단되었거나 사용자에 의해 취소되었습니다.\n\nWindows의 마이크 접근 권한을 확인해주세요.');
+        }
+    }
+}
+
+/**
+ * Web Audio API를 사용하여 오디오 스트림을 분석하도록 설정하는 함수
+ */
+function setupAudioProcessing() {
+    console.log('[renderer] 오디오 처리 설정 시작');
+
+    audioCtx = new AudioContext();
+    const source = audioCtx.createMediaStreamSource(audioStream);
+    const splitter = audioCtx.createChannelSplitter(2);
+    const analyserL = audioCtx.createAnalyser();
+    const analyserR = audioCtx.createAnalyser();
+
+    analyserL.fftSize = 2048;
+    analyserR.fftSize = 2048;
+
+    source.connect(splitter);
+    splitter.connect(analyserL, 0);
+    splitter.connect(analyserR, 1);
+
+    const dataL = new Uint8Array(analyserL.frequencyBinCount);
+    const dataR = new Uint8Array(analyserR.frequencyBinCount);
+
     const binSize = audioCtx.sampleRate / analyserL.fftSize;
     const lowBin = Math.floor(2000 / binSize);
     const highBin = Math.floor(8000 / binSize);
-    console.log('[renderer] 주파수 대역:', lowBin, '-', highBin);
+    let lastDetect = 0;
 
     function detectLoop() {
-        try {
-            analyserL.getByteFrequencyData(dataL);
-            analyserR.getByteFrequencyData(dataR);
-        } catch (err) {
-            console.error('[renderer] getByteFrequencyData 오류:', err);
-            return;
-        }
+        analyserL.getByteFrequencyData(dataL);
+        analyserR.getByteFrequencyData(dataR);
 
-        const now = performance.now();
         let peakL = 0, peakR = 0;
-
         for (let i = lowBin; i <= highBin; i++) {
             peakL = Math.max(peakL, dataL[i]);
             peakR = Math.max(peakR, dataR[i]);
         }
 
-        // 로그: 매 프레임 좌우 피크 값 (너무 많으니 10프레임마다만)
-        if (Math.random() < 0.1) {
-            console.log(`[renderer] 피크: L=${peakL}, R=${peakR}`);
-        }
-
+        const now = performance.now();
         if (now - lastDetect > 1000 && (peakL > 200 || peakR > 200)) {
             lastDetect = now;
             const diff = peakL - peakR;
@@ -284,47 +201,43 @@ async function startAudioCapture() {
             if (diff > 50) direction = '왼쪽';
             else if (diff < -50) direction = '오른쪽';
 
-            console.log(`[renderer] ${new Date().toLocaleTimeString()} – 총성 감지 (L:${peakL}, R:${peakR}) → ${direction}`);
             appendLog(`총성 감지: ${direction} 방향 (L:${peakL}, R:${peakR})`);
         }
 
         detectRafId = requestAnimationFrame(detectLoop);
     }
 
-    console.log('[renderer] 검출 루프 시작');
+    console.log('[renderer] 오디오 감지 루프 시작');
     detectLoop();
 }
 
+/**
+ * 오디오 캡처 및 분석을 중지하는 함수
+ */
 function stopAudioCapture() {
-    // 2.1) RAF 루프 취소
-    if (typeof detectRafId === 'number') {
+    if (detectRafId) {
         cancelAnimationFrame(detectRafId);
-        console.log('[renderer] detectLoop 중지 (cancelAnimationFrame)');
         detectRafId = null;
-    } else {
-        console.warn('[renderer] detectLoop ID 없음—이미 중지되었거나 startAudioCapture가 호출되지 않음');
     }
-
-    // 2.2) 스트림 트랙 정지
     if (audioStream) {
-        audioStream.getTracks().forEach(track => {
-            track.stop();
-            console.log(`[renderer] audioStream 트랙 중지: ${track.kind}`);
-        });
+        audioStream.getTracks().forEach(track => track.stop());
         audioStream = null;
-    } else {
-        console.warn('[renderer] audioStream 없음—getUserMedia가 호출되지 않았거나 이미 중지됨');
     }
-
-    // 2.3) AudioContext 종료
     if (audioCtx) {
-        audioCtx.close().then(() => {
-            console.log('[renderer] AudioContext 종료 완료');
-        }).catch(err => {
-            console.error('[renderer] AudioContext 종료 오류:', err);
-        });
+        audioCtx.close();
         audioCtx = null;
-    } else {
-        console.warn('[renderer] audioCtx 없음—AudioContext가 생성되지 않았거나 이미 종료됨');
     }
+    console.log('[renderer] 오디오 감지 중지됨');
+}
+
+/**
+ * 로그 메시지를 화면에 추가하는 헬퍼 함수
+ * @param {string} msg - 로그에 추가할 메시지
+ */
+function appendLog(msg) {
+    const log = document.getElementById('log');
+    if(log.textContent.length > 5000) log.textContent = ''; // 로그가 너무 길어지면 초기화
+    log.textContent += `[${new Date().toLocaleTimeString()}] ${msg}\n`;
+    const container = document.getElementById('log-container');
+    container.scrollTop = container.scrollHeight;
 }
