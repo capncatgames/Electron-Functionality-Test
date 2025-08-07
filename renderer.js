@@ -202,8 +202,9 @@ async function startAudioCapture() {
         // 시스템 오디오 캡처 (getDisplayMedia 사용)
         console.log('[renderer] 시스템 오디오 캡처 시도 중...');
 
-        audioStream = await navigator.mediaDevices.getDisplayMedia({
-            video: false,
+        // 1. 비디오와 오디오를 함께 요청합니다.
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+            video: true, //  <-- true로 변경하여 비디오 트랙을 반드시 요청
             audio: {
                 channelCount: 2,
                 sampleRate: 48000,
@@ -212,6 +213,15 @@ async function startAudioCapture() {
                 autoGainControl: false
             }
         });
+
+        // 2. 받아온 스트림에서 필요 없는 비디오 트랙을 찾아 중지시킵니다.
+        if (stream.getVideoTracks().length > 0) {
+            stream.getVideoTracks()[0].stop();
+            console.log('[renderer] 불필요한 비디오 트랙 중지 완료');
+        }
+
+        // 3. 오디오 트랙만 남은 스트림을 전역 변수에 할당합니다.
+        audioStream = stream;
 
         console.log('[renderer] 시스템 오디오 스트림 획득 성공');
 
