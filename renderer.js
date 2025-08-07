@@ -194,22 +194,17 @@ async function startAudioCapture() {
     // console.log(`[renderer] 선택된 출력 장치 ID: ${currentLoopbackDeviceId}`);
 
     try {
-        // 시스템 오디오 캡처 (getDisplayMedia 사용)
         console.log('[renderer] 시스템 오디오 캡처 시도 중...');
 
-        // 1. 비디오와 오디오를 함께 요청합니다.
+        // ✅ 이 부분이 윈도우에 팝업을 요청하는 유일한 코드입니다.
         const stream = await navigator.mediaDevices.getDisplayMedia({
-            video: true, //  <-- true로 변경하여 비디오 트랙을 반드시 요청
-            audio: {
-                channelCount: 2,
-                sampleRate: 48000,
-                echoCancellation: false,
-                noiseSuppression: false,
-                autoGainControl: false
-            }
+            video: true, // 반드시 true여야 합니다.
+            audio: true  // 반드시 true여야 합니다.
         });
 
-        // 2. 받아온 스트림에서 필요 없는 비디오 트랙을 찾아 중지시킵니다.
+        console.log('[renderer] 사용자가 공유를 허용했습니다. 스트림 획득 성공');
+
+        // 받아온 스트림에서 필요 없는 비디오 트랙은 바로 중지시켜 리소스를 아낍니다.
         if (stream.getVideoTracks().length > 0) {
             stream.getVideoTracks()[0].stop();
             console.log('[renderer] 불필요한 비디오 트랙 중지 완료');
@@ -219,15 +214,15 @@ async function startAudioCapture() {
         console.log('[renderer] 시스템 오디오 스트림 획득 성공');
 
     } catch (err) {
-        console.error('[renderer] 시스템 오디오 캡처 실패:', err);
-
-        // 사용자에게 좀 더 명확한 안내를 제공합니다.
+        // 사용자가 팝업에서 '취소'를 누르면 NotAllowedError가 발생합니다.
         if (err.name === 'NotAllowedError') {
-            alert('화면 공유를 취소했습니다. 오디오를 감지하려면 화면과 오디오 공유를 모두 허용해야 합니다.');
+            console.log('[renderer] 사용자가 화면 공유를 취소했습니다.');
+            alert('오디오 감지를 위해서는 화면 공유 팝업에서 "공유"를 선택해야 합니다.');
         } else {
-            alert('시스템 오디오 캡처에 실패했습니다. 공유 팝업에서 "시스템 오디오 공유" 옵션을 선택했는지 확인해주세요.');
+            // 다른 종류의 오류 (권한 문제 등)
+            console.error('[renderer] 시스템 오디오 캡처 실패:', err);
+            alert(`오디오 캡처에 실패했습니다. 오류: ${err.name}`);
         }
-        return;
     }
 
     let source, splitter, analyserL, analyserR, dataL, dataR;
