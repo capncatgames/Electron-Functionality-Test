@@ -9,5 +9,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onEnableDrag: (cb) => ipcRenderer.on('enable-drag', () => cb()),
     onAreaUpdated: (cb) => ipcRenderer.on('area-updated', (_, area) => cb(area)),
     getScreenDimensions: () => ipcRenderer.invoke('get-screen-dimensions'),
-    getHfToken: () => ipcRenderer.invoke('get-hf-token')
+    getHfToken: () => ipcRenderer.invoke('get-hf-token'),
+    getLoopbackDeviceId: () => {
+        console.log('[preload] getLoopbackDeviceId 호출');
+        return ipcRenderer.invoke('get-loopback-device-id');
+    },
+    openAudioDevicePicker: () => ipcRenderer.send('open-audio-device-picker'),
+    setAudioDeviceId: (deviceId) => ipcRenderer.send('set-audio-device-id', deviceId),
+    onUpdateAudioDeviceId: (callback) => ipcRenderer.on('updated-audio-device-id', (event, device) => callback(device))
 });

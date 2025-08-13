@@ -2,9 +2,9 @@ const { app, BrowserWindow, ipcMain, desktopCapturer, screen} = require('electro
 const path = require('path'); // 불러오면 디렉토리 경로 쓸 수 있음
 const { spawn } = require('child_process'); // 외부 프로그램 쓸 수 있게 해줌 여기서는 파이썬 쓸라고 가져옴
 require('dotenv').config();
-const { HfInference } = require('@huggingface/inference');
 
-const hf = new HfInference(process.env.HF_API_TOKEN);
+let selectedLoopbackDeviceId = null;
+
 let mainWindow;
 let screenCaptureWindow;
 let chatbotWindow;
@@ -13,6 +13,41 @@ let pyProc;
 ipcMain.handle('get-hf-token', () => {
     return process.env.HF_API_TOKEN;
 });
+
+function createChatbotWindow() {
+    // 이미 열려있는 챗봇 창이 있으면 포커스만 이동
+    if (chatbotWindow && !chatbotWindow.isDestroyed()) {
+        chatbotWindow.focus();
+        return;
+    }
+
+    chatbotWindow = new BrowserWindow({
+        width: 500,
+        height: 700,
+        minWidth: 400,
+        minHeight: 500,
+        transparent: false,
+        frame: true,
+        alwaysOnTop: true,
+        resizable: true,
+        title: 'AI 챗봇',
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false
+        }
+    });
+
+    chatbotWindow.loadFile('chatbot.html');
+
+    // 개발 중에는 DevTools 열기 (프로덕션에서는 제거)
+    // chatbotWindow.webContents.openDevTools();
+
+    // 창이 닫힐 때 변수 정리
+    // chatbotWindow.on('closed', () => {
+    //     chatbotWindow = null;
+    // });
+}
 
 app.whenReady().then(async () => {
     const { screen } = require('electron');
@@ -142,38 +177,3 @@ app.whenReady().then(async () => {
         createChatbotWindow();
     });
 });
-
-function createChatbotWindow() {
-    // 이미 열려있는 챗봇 창이 있으면 포커스만 이동
-    if (chatbotWindow && !chatbotWindow.isDestroyed()) {
-        chatbotWindow.focus();
-        return;
-    }
-
-    chatbotWindow = new BrowserWindow({
-        width: 500,
-        height: 700,
-        minWidth: 400,
-        minHeight: 500,
-        transparent: false,
-        frame: true,
-        alwaysOnTop: true,
-        resizable: true,
-        title: 'AI 챗봇',
-        webPreferences: {
-            preload: path.join(__dirname, 'preload.js'),
-            contextIsolation: true,
-            nodeIntegration: false
-        }
-    });
-
-    chatbotWindow.loadFile('chatbot.html');
-
-    // 개발 중에는 DevTools 열기 (프로덕션에서는 제거)
-    // chatbotWindow.webContents.openDevTools();
-
-    // 창이 닫힐 때 변수 정리
-    // chatbotWindow.on('closed', () => {
-    //     chatbotWindow = null;
-    // });
-}
